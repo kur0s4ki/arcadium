@@ -1,0 +1,16 @@
+{
+    "id": "plinko",
+    "gameName": "Plinko",
+    "instructions": "Shoot through the castle gate as many times as possible.",
+    "type": "HOLE",
+    "maxDurationSec": 180,
+    "sensors": [
+      { "id": "IR1", "points": 10 },
+      { "id": "IR2", "points": 25 },
+      { "id": "IR3", "points": 50 },
+      { "id": "IR4", "points": 0 },
+      { "id": "IR5", "points": 200 },
+      { "id": "IR6", "points": 500 },
+      { "id": "IR7", "points": 100 }
+    ]
+  }

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFC Reader Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        #status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        #badgeList {
+            list-style-type: none;
+            padding: 0;
+        }
+        .badge-item {
+            background-color: #e9ecef;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .badge-id {
+            font-weight: bold;
+        }
+        .badge-time {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        #clearBtn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        #clearBtn:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <h1>NFC Reader Client</h1>
+    
+    <div id="status" class="disconnected">Disconnected</div>
+    
+    <h2>Detected Badges</h2>
+    <ul id="badgeList"></ul>
+    
+    <button id="clearBtn">Clear List</button>
+
+    <script>
+        // Configuration
+        const wsUrl = `ws://${window.location.hostname}:8000`;
+        
+        // DOM Elements
+        const statusEl = document.getElementById('status');
+        const badgeListEl = document.getElementById('badgeList');
+        const clearBtnEl = document.getElementById('clearBtn');
+        
+        // WebSocket connection
+        let socket;
+        let reconnectInterval;
+        
+        // Connect to WebSocket server
+        function connect() {
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'connected';
+                clearInterval(reconnectInterval);
+                console.log('WebSocket connection established');
+            };
+            
+            socket.onclose = () => {
+                statusEl.textContent = 'Disconnected - Attempting to reconnect...';
+                statusEl.className = 'disconnected';
+                console.log('WebSocket connection closed');
+                
+                // Attempt to reconnect
+                if (!reconnectInterval) {
+                    reconnectInterval = setInterval(() => {
+                        connect();
+                    }, 5000);
+                }
+            };
+            
+            socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+            
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received message:', data);
+                    
+                    if (data.type === 'badge') {
+                        addBadgeToList(data);
+                    }
+                } catch (error) {
+                    console.error('Error parsing message:', error);
+                }
+            };
+        }
+        
+        // Add badge to the list
+        function addBadgeToList(badge) {
+            const li = document.createElement('li');
+            li.className = 'badge-item';
+            
+            const time = new Date(badge.timestamp);
+            const formattedTime = time.toLocaleTimeString();
+            
+            li.innerHTML = `
+                <span class="badge-id">${badge.id}</span>
+                <span class="badge-time">${formattedTime}</span>
+            `;
+            
+            badgeListEl.prepend(li);
+        }
+        
+        // Clear badge list
+        clearBtnEl.addEventListener('click', () => {
+            badgeListEl.innerHTML = '';
+        });
+        
+        // Initial connection
+        connect();
+    </script>
+</body>
+</html>
