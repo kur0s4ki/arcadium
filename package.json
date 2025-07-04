@@ -1,5 +1,5 @@
 {
-  "name": "mini-golf-station",
+  "name": "team-arcade-middleware",
   "version": "0.1.0",
   "license": "MIT",
   "private": true,
@@ -16,14 +16,11 @@
     "@nestjs/config": "^3.1.0",
     "@nestjs/core": "^10.2.0",
     "@nestjs/platform-express": "^10.2.0",
-    "@nestjs/platform-ws": "^10.2.0",
-    "@nestjs/websockets": "^10.2.0",
     "joi": "^17.9.2",
     "onoff": "^6.0.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "spi-device": "^3.1.2",
-    "websockets": "^0.2.0",
     "nfc-pcsc": "^0.8.1",
     "serialport": "^9.2.4"
   },

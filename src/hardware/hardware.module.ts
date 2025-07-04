@@ -7,8 +7,7 @@ import { PcscLiteReaderService } from './nfc/nfc-pcsc-reader.service';
 import { Rs232ReaderService } from './nfc/rs232-reader.service';
 import { ControllinoSensorService } from './sensors/controllino-sensor.service';
 import { ControllinoLedService } from './leds/controllino-led.service';
-import { UiModule } from '../ui/ui.module';
-import { WebsocketDisplayService } from 'src/ui/websocket-display.service';
+import { ConsoleDisplayService } from './display/console-display.service';
 import { ConfigService } from '@nestjs/config';
 
 @Module({})
@@ -44,12 +43,11 @@ export class HardwareModule {
         ? { provide: LED_CONTROL, useClass: ControllinoLedService }
         : { provide: LED_CONTROL, useClass: MockLedService },
 
-      { provide: DISPLAY, useClass: WebsocketDisplayService },
+      { provide: DISPLAY, useClass: ConsoleDisplayService },
     ];
 
     return {
       module: HardwareModule,
-      imports: [UiModule],
       providers,
       exports: providers,
     };
