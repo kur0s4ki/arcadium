@@ -13,7 +13,7 @@ export class MockNfcReaderService implements NfcReaderService {
       if (key.name === 's') this.tag$.next('123456');
     });
   }
-  onTag(): Observable<string> {   
+  onTag(): Observable<string> {
     return this.tag$.asObservable();
   }
 }

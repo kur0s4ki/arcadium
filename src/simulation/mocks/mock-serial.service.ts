@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Observable, Subject, timer } from 'rxjs';
-import { 
-  SerialControlService, 
-  GameScores, 
-  SerialCommand 
+import {
+  SerialControlService,
+  GameScores,
+  SerialCommand,
 } from '../../hardware/interfaces/serial-control.interface';
 
 @Injectable()
@@ -12,30 +12,40 @@ export class MockSerialService implements SerialControlService {
   private roomTimerExpired$ = new Subject<void>();
   private allGamesComplete$ = new Subject<void>();
   private scoresReceived$ = new Subject<GameScores>();
-  
+
   private roomTimerActive = false;
   private gameSessionActive = false;
 
   // Room control commands
   async turnOnLighting(): Promise<void> {
-    this.log.log(`🔆 [MOCK] ${SerialCommand.TURN_ON_LIGHTING} - Room lighting turned on`);
+    this.log.log(
+      `🔆 [MOCK] ${SerialCommand.TURN_ON_LIGHTING} - Room lighting turned on`,
+    );
   }
 
   async turnOffLighting(): Promise<void> {
-    this.log.log(`🔅 [MOCK] ${SerialCommand.TURN_OFF_LIGHTING} - Room lighting turned off`);
+    this.log.log(
+      `🔅 [MOCK] ${SerialCommand.TURN_OFF_LIGHTING} - Room lighting turned off`,
+    );
   }
 
   async openAccessLatch(): Promise<void> {
-    this.log.log(`🚪 [MOCK] ${SerialCommand.OPEN_ACCESS} - Access latch opened`);
+    this.log.log(
+      `🚪 [MOCK] ${SerialCommand.OPEN_ACCESS} - Access latch opened`,
+    );
   }
 
   async closeAccessLatch(): Promise<void> {
-    this.log.log(`🔒 [MOCK] ${SerialCommand.CLOSE_ACCESS} - Access latch closed`);
+    this.log.log(
+      `🔒 [MOCK] ${SerialCommand.CLOSE_ACCESS} - Access latch closed`,
+    );
   }
 
   // Game control commands
   async startArcades(maxGames: number): Promise<void> {
-    this.log.log(`🎮 [MOCK] ${SerialCommand.START_ARCADES}:${maxGames} - Arcades started with max ${maxGames} games`);
+    this.log.log(
+      `🎮 [MOCK] ${SerialCommand.START_ARCADES}:${maxGames} - Arcades started with max ${maxGames} games`,
+    );
     this.gameSessionActive = true;
     this.startRoomTimer();
     this.simulateGameSession();
@@ -53,28 +63,40 @@ export class MockSerialService implements SerialControlService {
 
   // Display commands
   async displayInstructions(instructions: string): Promise<void> {
-    this.log.log(`📋 [MOCK] ${SerialCommand.DISPLAY_INSTRUCTIONS}:${instructions} - Instructions displayed`);
+    this.log.log(
+      `📋 [MOCK] ${SerialCommand.DISPLAY_INSTRUCTIONS}:${instructions} - Instructions displayed`,
+    );
   }
 
   async showWin(): Promise<void> {
-    this.log.log(`🏆 [MOCK] ${SerialCommand.SHOW_WIN} - Win animation displayed`);
+    this.log.log(
+      `🏆 [MOCK] ${SerialCommand.SHOW_WIN} - Win animation displayed`,
+    );
   }
 
   async showLoss(): Promise<void> {
-    this.log.log(`😞 [MOCK] ${SerialCommand.SHOW_LOSS} - Loss animation displayed`);
+    this.log.log(
+      `😞 [MOCK] ${SerialCommand.SHOW_LOSS} - Loss animation displayed`,
+    );
   }
 
   async showJackpotAnimation(): Promise<void> {
-    this.log.log(`💰 [MOCK] ${SerialCommand.JACKPOT_ANIMATION} - Jackpot animation displayed`);
+    this.log.log(
+      `💰 [MOCK] ${SerialCommand.JACKPOT_ANIMATION} - Jackpot animation displayed`,
+    );
   }
 
   async celebrate(): Promise<void> {
-    this.log.log(`🎉 [MOCK] ${SerialCommand.CELEBRATE} - Celebration effects activated`);
+    this.log.log(
+      `🎉 [MOCK] ${SerialCommand.CELEBRATE} - Celebration effects activated`,
+    );
   }
 
   // Access control
   async sendAccessDenied(): Promise<void> {
-    this.log.log(`❌ [MOCK] ${SerialCommand.ACCESS_DENIED} - Access denied message sent`);
+    this.log.log(
+      `❌ [MOCK] ${SerialCommand.ACCESS_DENIED} - Access denied message sent`,
+    );
   }
 
   // Event monitoring
@@ -105,12 +127,12 @@ export class MockSerialService implements SerialControlService {
   private simulateGameSession() {
     // Simulate a game session that completes after 2-4 minutes
     const sessionDuration = Math.random() * 120000 + 120000; // 2-4 minutes
-    
+
     timer(sessionDuration).subscribe(() => {
       if (this.gameSessionActive) {
         this.log.log('🎮 [MOCK] All games completed');
         this.allGamesComplete$.next();
-        
+
         // Simulate receiving scores after a short delay
         timer(2000).subscribe(() => {
           this.simulateScores();
