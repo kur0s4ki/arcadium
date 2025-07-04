@@ -29,5 +29,12 @@
     },
     "screenId": "HDMI-0"
   },
+  "gameRules": {
+    "roomDurationMinutes": 5,
+    "maxGamesPerSession": 4,
+    "individualGameDurationMinutes": 3,
+    "jackpotThreshold": 1000,
+    "gameInstructions": "Welcome! You have 5 minutes to play up to 4 arcade games. Good luck!"
+  },
   "adminBadges": ["faae8f0c"]
 }

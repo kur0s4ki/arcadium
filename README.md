@@ -4,12 +4,17 @@ A NestJS-based middleware service that acts as an intermediary between team-base
 
 ## Description
 
-This application serves as a middleware layer that:
+This application serves as a middleware layer that implements a complete 9-phase team arcade game session workflow:
 
-- Handles team badge scanning and authorization
-- Manages sensor events from arcade machines
-- Submits team scores to backend game management systems
-- Provides hardware abstraction for NFC readers, sensors, and LED controls
+1. **Badge Scanning** - Waits for team member NFC badge scan
+2. **Team Authorization** - Validates team access with backend API
+3. **Room Access Control** - Controls lighting, access latches, and displays instructions
+4. **Arcade Game Session Management** - Starts arcade machines and monitors timers
+5. **Score Collection** - Receives final scores from arcade machines
+6. **Result Evaluation** - Determines win/loss/jackpot status based on scores
+7. **Backend Score Submission** - Submits team results to game management system
+8. **End Game Effects** - Displays appropriate animations (win/loss/jackpot)
+9. **Session Cleanup** - Resets system for next team
 
 Built with [NestJS](https://github.com/nestjs/nest) framework.
 
@@ -30,6 +35,11 @@ STATION_ID=ARCADE-01
 MODE=SIM
 API_BASE=https://your-backend-server.com/api/game-manager
 GAME_ID=1
+
+# Game Rules Configuration
+ROOM_DURATION_MINUTES=5
+MAX_GAMES_PER_SESSION=4
+JACKPOT_THRESHOLD=1000
 ```
 
 ## Compile and run the project
@@ -70,7 +80,10 @@ The middleware supports various hardware configurations:
 - **NFC Readers**: PC/SC compatible readers and RS232 serial readers
 - **Sensors**: Controllino-based sensor systems
 - **LEDs**: RGB LED status indicators
-- **Simulation Mode**: Mock hardware services for development
+- **Serial Control**: Room lighting, access latches, arcade machine control
+- **Timer Monitoring**: Room duration and game completion tracking
+- **Display Control**: Game instructions and result animations
+- **Simulation Mode**: Complete mock hardware services for development
 
 ## Run tests
 

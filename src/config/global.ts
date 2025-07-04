@@ -21,6 +21,21 @@ export default registerAs('global', () => {
       baseUrl: process.env.API_BASE ? process.env.API_BASE : cfg.api.baseUrl,
     },
 
+    gameRules: {
+      roomDurationMinutes: process.env.ROOM_DURATION_MINUTES
+        ? parseInt(process.env.ROOM_DURATION_MINUTES, 10)
+        : cfg.gameRules.roomDurationMinutes,
+      maxGamesPerSession: process.env.MAX_GAMES_PER_SESSION
+        ? parseInt(process.env.MAX_GAMES_PER_SESSION, 10)
+        : cfg.gameRules.maxGamesPerSession,
+      individualGameDurationMinutes:
+        cfg.gameRules.individualGameDurationMinutes,
+      jackpotThreshold: process.env.JACKPOT_THRESHOLD
+        ? parseInt(process.env.JACKPOT_THRESHOLD, 10)
+        : cfg.gameRules.jackpotThreshold,
+      gameInstructions: cfg.gameRules.gameInstructions,
+    },
+
     hardware: cfg.hardware,
     adminBadges: cfg.adminBadges,
   };

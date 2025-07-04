@@ -5,4 +5,7 @@ export default Joi.object({
   MODE: Joi.string().valid('SIM', 'PROD').default('SIM'),
   API_BASE: Joi.string().uri().required(),
   GAME_ID: Joi.number().default(1),
+  ROOM_DURATION_MINUTES: Joi.number().default(5),
+  MAX_GAMES_PER_SESSION: Joi.number().default(4),
+  JACKPOT_THRESHOLD: Joi.number().default(1000),
 });

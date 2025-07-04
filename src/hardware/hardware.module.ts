@@ -1,12 +1,20 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
-import { NFC_READER, SENSOR_BUS, DISPLAY, LED_CONTROL } from './tokens';
+import {
+  NFC_READER,
+  SENSOR_BUS,
+  DISPLAY,
+  LED_CONTROL,
+  SERIAL_CONTROL,
+} from './tokens';
 import { MockNfcReaderService } from '../simulation/mocks/mock-nfc-reader.service';
 import { MockSensorBusService } from '../simulation/mocks/mock-sensor-bus.service';
 import { MockLedService } from '../simulation/mocks/mock-led.service';
+import { MockSerialService } from '../simulation/mocks/mock-serial.service';
 import { PcscLiteReaderService } from './nfc/nfc-pcsc-reader.service';
 import { Rs232ReaderService } from './nfc/rs232-reader.service';
 import { ControllinoSensorService } from './sensors/controllino-sensor.service';
 import { ControllinoLedService } from './leds/controllino-led.service';
+import { ControllinoSerialService } from './serial/controllino-serial.service';
 import { ConsoleDisplayService } from './display/console-display.service';
 import { ConfigService } from '@nestjs/config';
 
@@ -42,6 +50,10 @@ export class HardwareModule {
       mode === 'PROD'
         ? { provide: LED_CONTROL, useClass: ControllinoLedService }
         : { provide: LED_CONTROL, useClass: MockLedService },
+
+      mode === 'PROD'
+        ? { provide: SERIAL_CONTROL, useClass: ControllinoSerialService }
+        : { provide: SERIAL_CONTROL, useClass: MockSerialService },
 
       { provide: DISPLAY, useClass: ConsoleDisplayService },
     ];
