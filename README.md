@@ -83,7 +83,6 @@ The middleware supports various hardware configurations:
 - **Serial Control**: Room lighting, access latches, arcade machine control
 - **Timer Monitoring**: Room duration and game completion tracking
 - **Display Control**: Game instructions and result animations
-- **Simulation Mode**: Complete mock hardware services for development
 
 ## Run tests
 

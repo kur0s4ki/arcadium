@@ -1,18 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Observable, Subject } from 'rxjs';
-import { SerialPort } from 'serialport';
-import { 
-  SerialControlService, 
-  GameScores, 
-  SerialCommand, 
-  SerialEvent 
+import {
+  SerialControlService,
+  GameScores,
+  SerialCommand,
+  SerialEvent,
 } from '../interfaces/serial-control.interface';
+
+// Import SerialPort for version 9.x
+const SerialPort = require('serialport');
 
 @Injectable()
 export class ControllinoSerialService implements SerialControlService {
   private readonly log = new Logger(ControllinoSerialService.name);
-  private serialPort: SerialPort;
+  private serialPort: any;
   private roomTimerExpired$ = new Subject<void>();
   private allGamesComplete$ = new Subject<void>();
   private scoresReceived$ = new Subject<GameScores>();
@@ -22,19 +24,25 @@ export class ControllinoSerialService implements SerialControlService {
   }
 
   private initializeSerial() {
-    const portPath = this.cfg.get<string>('global.hardware.controllino.serial.defaultPort', '/dev/ttyACM0');
-    const baudRate = this.cfg.get<number>('global.hardware.controllino.serial.baudRate', 9600);
+    const portPath = this.cfg.get<string>(
+      'global.hardware.controllino.serial.defaultPort',
+      '/dev/ttyACM0',
+    );
+    const baudRate = this.cfg.get<number>(
+      'global.hardware.controllino.serial.baudRate',
+      9600,
+    );
 
-    this.serialPort = new SerialPort({
-      path: portPath,
+    // For serialport v9.x, use the constructor with path and options
+    this.serialPort = new SerialPort(portPath, {
       baudRate: baudRate,
     });
 
-    this.serialPort.on('data', (data) => {
+    this.serialPort.on('data', (data: Buffer) => {
       this.handleSerialData(data.toString());
     });
 
-    this.serialPort.on('error', (error) => {
+    this.serialPort.on('error', (error: Error) => {
       this.log.error(`Serial port error: ${error.message}`);
     });
 
@@ -57,7 +65,11 @@ export class ControllinoSerialService implements SerialControlService {
         this.handleScoresData(trimmedData);
       }
     } catch (error) {
-      this.log.error(`Error parsing serial data: ${error instanceof Error ? error.message : String(error)}`);
+      this.log.error(
+        `Error parsing serial data: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
@@ -66,27 +78,39 @@ export class ControllinoSerialService implements SerialControlService {
       // Expected format: "SCORES_RECEIVED:{ game1: 100, game2: 200, game3: 0, game4: 150 }"
       const jsonPart = data.substring(data.indexOf(':') + 1);
       const scores: GameScores = JSON.parse(jsonPart);
-      
+
       this.log.log(`📊 Scores received: ${JSON.stringify(scores)}`);
       this.scoresReceived$.next(scores);
     } catch (error) {
-      this.log.error(`Error parsing scores data: ${error instanceof Error ? error.message : String(error)}`);
+      this.log.error(
+        `Error parsing scores data: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
-  private async sendCommand(command: SerialCommand, parameter?: string | number): Promise<void> {
+  private async sendCommand(
+    command: SerialCommand,
+    parameter?: string | number,
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const commandString = parameter ? `${command}:${parameter}` : command;
-      
-      this.serialPort.write(`${commandString}\n`, (error) => {
-        if (error) {
-          this.log.error(`Failed to send command ${commandString}: ${error.message}`);
-          reject(error);
-        } else {
-          this.log.debug(`Sent command: ${commandString}`);
-          resolve();
-        }
-      });
+
+      this.serialPort.write(
+        `${commandString}\n`,
+        (error: Error | null | undefined) => {
+          if (error) {
+            this.log.error(
+              `Failed to send command ${commandString}: ${error.message}`,
+            );
+            reject(error);
+          } else {
+            this.log.debug(`Sent command: ${commandString}`);
+            resolve();
+          }
+        },
+      );
     });
   }
 
