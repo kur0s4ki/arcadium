@@ -16,7 +16,7 @@ import {
   GameScores,
 } from '../hardware/interfaces/serial-control.interface';
 import { ConfigService } from '@nestjs/config';
-import { firstValueFrom, Subscription } from 'rxjs';
+import { firstValueFrom, Subscription, Subject, Observable, merge } from 'rxjs';
 import { ApiService } from '../api/api.service';
 import {
   TeamGameManagerResponse,
@@ -24,6 +24,7 @@ import {
   TeamScoreRequest,
   PlayerScoreData,
 } from '../common/dto/game‑manager.dto';
+import * as readline from 'readline';
 
 interface GameResult {
   teamWon: boolean;
@@ -40,6 +41,8 @@ export class TeamArcadeService implements OnModuleInit {
   private gameScores: Map<number, number> = new Map(); // playerId -> score
   private sessionSubscriptions: Subscription[] = [];
   private sessionActive = false;
+  private manualBadgeSubject = new Subject<string>();
+  private rl?: readline.Interface;
 
   constructor(
     @Inject(NFC_READER) private nfc: NfcReaderService,
@@ -50,6 +53,7 @@ export class TeamArcadeService implements OnModuleInit {
     private api: ApiService,
   ) {
     console.log('🔧 TeamArcadeService constructor called');
+    this.setupKeyboardListener();
   }
 
   async onModuleInit() {
@@ -105,9 +109,30 @@ export class TeamArcadeService implements OnModuleInit {
   // Phase 1: Badge Scanning
   private async waitForBadgeScan(): Promise<string> {
     this.log.log('🏷️ Phase 1: Waiting for team badge scan...');
+    this.log.log(
+      '💡 Development tip: Press "B" + Enter to manually enter a badge ID',
+    );
     this.led.setColor(LedColor.GREEN);
 
-    const badgeId = await firstValueFrom(this.nfc.onTag());
+    // Create a combined observable that listens to both NFC reader and manual input
+    const combinedSource = new Observable<string>((subscriber) => {
+      // Subscribe to real NFC reader
+      const nfcSub = this.nfc.onTag().subscribe((badgeId) => {
+        subscriber.next(badgeId);
+      });
+
+      // Subscribe to manual badge input
+      const manualSub = this.manualBadgeSubject.subscribe((badgeId) => {
+        subscriber.next(badgeId);
+      });
+
+      return () => {
+        nfcSub.unsubscribe();
+        manualSub.unsubscribe();
+      };
+    });
+
+    const badgeId = await firstValueFrom(combinedSource);
     this.log.log(`Badge scanned: ${badgeId}`);
     this.led.setColor(LedColor.YELLOW);
 
@@ -463,5 +488,66 @@ export class TeamArcadeService implements OnModuleInit {
         }`,
       );
     }
+  }
+
+  // Development helper: Keyboard listener for manual badge input
+  private setupKeyboardListener(): void {
+    // Only enable in SIM mode
+    const mode = this.cfg.get<string>('global.mode', 'PROD');
+    if (mode !== 'SIM') {
+      return;
+    }
+
+    this.rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    // Set up raw mode to capture single keystrokes
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+
+    process.stdin.on('data', (key) => {
+      const keyStr = key.toString().toLowerCase();
+
+      if (keyStr === 'b') {
+        this.promptForBadgeId();
+      }
+      // Handle Ctrl+C gracefully
+      else if (key[0] === 3) {
+        process.exit(0);
+      }
+    });
+
+    this.log.log(
+      '⌨️  Keyboard listener active - Press "B" to simulate badge scan',
+    );
+  }
+
+  private promptForBadgeId(): void {
+    if (!this.rl) {
+      this.log.warn('❌ Readline interface not available');
+      return;
+    }
+
+    // Temporarily disable raw mode for input
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+
+    this.rl.question('\n🏷️  Enter badge ID: ', (badgeId) => {
+      if (badgeId.trim()) {
+        this.log.log(`📱 Manual badge input: ${badgeId.trim()}`);
+        this.manualBadgeSubject.next(badgeId.trim());
+      } else {
+        this.log.warn('❌ Empty badge ID, ignoring...');
+      }
+
+      // Re-enable raw mode
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(true);
+      }
+    });
   }
 }
