@@ -6,22 +6,23 @@ export interface SerialControlService {
   turnOffLighting(): Promise<void>;
   openAccessLatch(): Promise<void>;
   closeAccessLatch(): Promise<void>;
-  
+
   // Game control commands
-  startArcades(maxGames: number): Promise<void>;
+  startArcades(durationMinutes: number): Promise<void>;
   stopArcades(): Promise<void>;
   stopTimers(): Promise<void>;
-  
+
   // Display commands
   displayInstructions(instructions: string): Promise<void>;
+  sendTeamData(teamData: any): Promise<void>;
   showWin(): Promise<void>;
   showLoss(): Promise<void>;
   showJackpotAnimation(): Promise<void>;
   celebrate(): Promise<void>;
-  
+
   // Access control
   sendAccessDenied(): Promise<void>;
-  
+
   // Event monitoring
   onRoomTimerExpired(): Observable<void>;
   onAllGamesComplete(): Observable<void>;
@@ -29,10 +30,10 @@ export interface SerialControlService {
 }
 
 export interface GameScores {
-  game1: number;
-  game2: number;
-  game3: number;
-  game4: number;
+  player1: number; // Score from arcade machine 1 (for player 1)
+  player2: number; // Score from arcade machine 2 (for player 2)
+  player3: number; // Score from arcade machine 3 (for player 3)
+  player4: number; // Score from arcade machine 4 (for player 4)
 }
 
 export enum SerialCommand {
@@ -48,11 +49,12 @@ export enum SerialCommand {
   SHOW_LOSS = 'SHOW_LOSS',
   JACKPOT_ANIMATION = 'JACKPOT_ANIMATION',
   CELEBRATE = 'CELEBRATE',
-  DISPLAY_INSTRUCTIONS = 'DISPLAY_INSTRUCTIONS'
+  DISPLAY_INSTRUCTIONS = 'DISPLAY_INSTRUCTIONS',
+  TEAM_DATA = 'TEAM_DATA',
 }
 
 export enum SerialEvent {
   ROOM_TIMER_EXPIRED = 'ROOM_TIMER_EXPIRED',
   ALL_GAMES_COMPLETE = 'ALL_GAMES_COMPLETE',
-  SCORES_RECEIVED = 'SCORES_RECEIVED'
+  SCORES_RECEIVED = 'SCORES_RECEIVED',
 }

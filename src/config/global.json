@@ -4,7 +4,7 @@
   "stationId": "ARCADE-01",
   "mode": "SIM",
   "api": {
-    "baseUrl": "https://vmi693601.contaboserver.net:9010/api/game-manager"
+    "baseUrl": "https://vmi1015553.contaboserver.net:9010/api/game-manager"
   },
   "hardware": {
     "nfcReaderType": "RS232",
@@ -36,10 +36,9 @@
   },
   "gameRules": {
     "roomDurationMinutes": 5,
-    "maxGamesPerSession": 4,
     "individualGameDurationMinutes": 3,
     "jackpotThreshold": 1000,
-    "gameInstructions": "Welcome! You have 5 minutes to play up to 4 arcade games. Good luck!"
+    "gameInstructions": "Welcome! You have 5 minutes to play arcade games. Good luck!"
   },
   "adminBadges": ["faae8f0c"]
 }

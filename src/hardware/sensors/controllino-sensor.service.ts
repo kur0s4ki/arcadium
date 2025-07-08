@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
 import { SensorBusService } from '../interfaces/sensor-bus.interface';
 import { SensorEvent } from '../../common/interfaces/sensor-event.interface';
@@ -24,8 +24,6 @@ interface SerialCfg {
 export class ControllinoSensorService
   implements SensorBusService, OnModuleInit
 {
-  private readonly log = new Logger(ControllinoSensorService.name);
-
   private port!: any; // SerialPort instance
   private readonly chunks: string[] = [];
   /** Last emit timestamp for every sensor, used for simple debounce */
@@ -50,11 +48,11 @@ export class ControllinoSensorService
    */
   sendCommand(command: string): void {
     if (!this.port || !this.port.isOpen) {
-      this.log.warn('Cannot send command - serial port not open');
+      // Serial port not open - skip command
       return;
     }
 
-    this.log.debug(`Sending command to Controllino: ${command}`);
+    // Debug: console.log(`📤 Sending command to Controllino: ${command}`);
     this.port.write(command);
   }
 
@@ -85,7 +83,7 @@ export class ControllinoSensorService
     // 1️⃣  Explicit env override still wins (WINDOWS: e.g. "COM9")
     let path = serialCfg.defaultPort;
     if (path) {
-      this.log.log(`Using port from env/global.json → ${path}`);
+      console.log(`Using port from env/global.json → ${path}`);
     } else {
       // 2️⃣  Auto‑detect by USB vendorId (works on Linux & macOS; vendorId often undefined on Windows)
       const ports = await SerialPortPkg.list();
@@ -108,13 +106,15 @@ export class ControllinoSensorService
     });
 
     this.port.once('open', () => {
-      this.log.log(`Controllino opened on ${path}`);
+      console.log(`Controllino opened on ${path}`);
       // Initial poll to get the current mask
       this.port.write('I');
     });
 
     this.port.on('data', (buf: Buffer) => this.onChunk(buf));
-    this.port.on('error', (err: Error) => this.log.error(err.message));
+    this.port.on('error', (err: Error) =>
+      console.error(`❌ Controllino sensor error: ${err.message}`),
+    );
     this.port.open();
   }
 
@@ -164,7 +164,7 @@ export class ControllinoSensorService
 
         this.lastHit[id] = now;
         this.ev$.next({ id, ts: now });
-        this.log.log(`IR hit → ${id}`);
+        console.log(`IR hit → ${id}`);
       }
     }
   }

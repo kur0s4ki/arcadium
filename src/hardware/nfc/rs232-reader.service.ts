@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
 import { NfcReaderService } from '../interfaces/nfc-reader.interface';
 import { ConfigService } from '@nestjs/config';
@@ -9,13 +9,12 @@ const SerialPort = require('serialport');
 @Injectable()
 export class Rs232ReaderService implements NfcReaderService, OnModuleInit {
   private readonly tag$ = new Subject<string>();
-  private readonly log = new Logger(Rs232ReaderService.name);
   private serialPort: any = null;
   private receivedData: string = '';
   private lastEmittedData: string | null = null;
 
   constructor(private cfg: ConfigService) {
-    this.log.log('🔧 Rs232ReaderService constructor called');
+    console.log('🔧 Rs232ReaderService constructor called');
   }
 
   async onModuleInit() {
@@ -25,7 +24,7 @@ export class Rs232ReaderService implements NfcReaderService, OnModuleInit {
   private async initSerialPort() {
     try {
       const ports = await SerialPort.list();
-      this.log.log(
+      console.log(
         `Available serial ports: ${ports.map((p) => p.path).join(', ')}`,
       );
 
@@ -36,7 +35,7 @@ export class Rs232ReaderService implements NfcReaderService, OnModuleInit {
       );
 
       // Use the configured port directly instead of searching by vendor ID
-      this.log.log(`Using configured RS232 port: ${defaultPort}`);
+      console.log(`Using configured RS232 port: ${defaultPort}`);
 
       // Initialize serial port
       this.serialPort = new SerialPort(defaultPort, {
@@ -55,9 +54,7 @@ export class Rs232ReaderService implements NfcReaderService, OnModuleInit {
         this.receivedData += dataStr;
 
         // Debug the received data
-        this.log.debug(
-          `Received data: ${dataStr} (buffer length: ${this.receivedData.length})`,
-        );
+        // console.log(`📡 Received data: ${dataStr} (buffer length: ${this.receivedData.length})`);
 
         // Check if we have a complete message
         if (this.receivedData.includes('\r\n')) {
@@ -74,7 +71,7 @@ export class Rs232ReaderService implements NfcReaderService, OnModuleInit {
               const trimmedMessage = message.trim();
               const badgeId = trimmedMessage.substring(2); // Extract badge ID from message
 
-              this.log.log(`Badge detected → ${badgeId}`);
+              console.log(`Badge detected → ${badgeId}`);
 
               // Prevent duplicate badge reads
               if (badgeId !== this.lastEmittedData) {
@@ -88,7 +85,7 @@ export class Rs232ReaderService implements NfcReaderService, OnModuleInit {
                   this.lastEmittedData = null;
                 }, 5000);
               } else {
-                this.log.debug(`Duplicate badge read detected: ${badgeId}`);
+                // console.log(`🔄 Duplicate badge read detected: ${badgeId}`);
               }
             }
           }
@@ -96,14 +93,14 @@ export class Rs232ReaderService implements NfcReaderService, OnModuleInit {
       });
 
       this.serialPort.on('error', (err) =>
-        this.log.error(`Serial port error: ${err.message}`),
+        console.error(`❌ RS232 serial port error: ${err.message}`),
       );
     } catch (error: unknown) {
       // Type-safe error handling
       if (error instanceof Error) {
-        this.log.error(`Error initializing RS232 reader: ${error.message}`);
+        console.error(`❌ Error initializing RS232 reader: ${error.message}`);
       } else {
-        this.log.error(`Error initializing RS232 reader: ${String(error)}`);
+        console.error(`❌ Error initializing RS232 reader: ${String(error)}`);
       }
     }
   }

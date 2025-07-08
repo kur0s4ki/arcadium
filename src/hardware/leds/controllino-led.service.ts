@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit, Inject } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { Observable, of, timer } from 'rxjs';
 import { tap, switchMap } from 'rxjs/operators';
 import {
@@ -11,7 +11,6 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ControllinoLedService implements LedControlService, OnModuleInit {
-  private readonly log = new Logger(ControllinoLedService.name);
   private currentColor: LedColor = LedColor.NONE;
 
   // Output pin mapping from configuration
@@ -37,7 +36,7 @@ export class ControllinoLedService implements LedControlService, OnModuleInit {
       '03',
     );
 
-    this.log.log(
+    console.log(
       `LED output mapping: Red=${this.OUTPUT_RED}, Green=${this.OUTPUT_GREEN}, Blue=${this.OUTPUT_BLUE}`,
     );
   }
@@ -83,7 +82,7 @@ export class ControllinoLedService implements LedControlService, OnModuleInit {
 
   private sendColorCommand(color: LedColor): void {
     if (!this.controllinoSensor.isSerialPortOpen()) {
-      this.log.warn('Cannot send LED command - serial port not open');
+      // Serial port not open - skip LED command
       return;
     }
 
@@ -128,7 +127,7 @@ export class ControllinoLedService implements LedControlService, OnModuleInit {
 
   private logColorChange(color: LedColor): void {
     const colorName = this.getColorName(color);
-    this.log.log(`[LED] Set color to ${colorName}`);
+    console.log(`[LED] Set color to ${colorName}`);
   }
 
   private getColorName(color: LedColor): string {

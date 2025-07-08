@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Observable, Subject } from 'rxjs';
 import {
@@ -13,7 +13,6 @@ const SerialPort = require('serialport');
 
 @Injectable()
 export class ControllinoSerialService implements SerialControlService {
-  private readonly log = new Logger(ControllinoSerialService.name);
   private serialPort: any;
   private roomTimerExpired$ = new Subject<void>();
   private allGamesComplete$ = new Subject<void>();
@@ -43,30 +42,30 @@ export class ControllinoSerialService implements SerialControlService {
     });
 
     this.serialPort.on('error', (error: Error) => {
-      this.log.error(`Serial port error: ${error.message}`);
+      console.error(`❌ Serial port error: ${error.message}`);
     });
 
-    this.log.log(`Serial port initialized on ${portPath} at ${baudRate} baud`);
+    console.log(`Serial port initialized on ${portPath} at ${baudRate} baud`);
   }
 
   private handleSerialData(data: string) {
     const trimmedData = data.trim();
-    this.log.debug(`Received serial data: ${trimmedData}`);
+    // Debug: console.log(`📡 Received serial data: ${trimmedData}`);
 
     try {
       // Handle different types of incoming data
       if (trimmedData === SerialEvent.ROOM_TIMER_EXPIRED) {
-        this.log.log('🕐 Room timer expired event received');
+        console.log('🕐 Room timer expired event received');
         this.roomTimerExpired$.next();
       } else if (trimmedData === SerialEvent.ALL_GAMES_COMPLETE) {
-        this.log.log('🎮 All games complete event received');
+        console.log('🎮 All games complete event received');
         this.allGamesComplete$.next();
       } else if (trimmedData.startsWith(SerialEvent.SCORES_RECEIVED)) {
         this.handleScoresData(trimmedData);
       }
     } catch (error) {
-      this.log.error(
-        `Error parsing serial data: ${
+      console.error(
+        `❌ Error parsing serial data: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -75,15 +74,15 @@ export class ControllinoSerialService implements SerialControlService {
 
   private handleScoresData(data: string) {
     try {
-      // Expected format: "SCORES_RECEIVED:{ game1: 100, game2: 200, game3: 0, game4: 150 }"
+      // Expected format: "SCORES_RECEIVED:{ player1: 100, player2: 200, player3: 0, player4: 150 }"
       const jsonPart = data.substring(data.indexOf(':') + 1);
       const scores: GameScores = JSON.parse(jsonPart);
 
-      this.log.log(`📊 Scores received: ${JSON.stringify(scores)}`);
+      console.log(`📊 Player scores received: ${JSON.stringify(scores)}`);
       this.scoresReceived$.next(scores);
     } catch (error) {
-      this.log.error(
-        `Error parsing scores data: ${
+      console.error(
+        `❌ Error parsing scores data: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -101,12 +100,12 @@ export class ControllinoSerialService implements SerialControlService {
         `${commandString}\n`,
         (error: Error | null | undefined) => {
           if (error) {
-            this.log.error(
-              `Failed to send command ${commandString}: ${error.message}`,
+            console.error(
+              `❌ Failed to send command ${commandString}: ${error.message}`,
             );
             reject(error);
           } else {
-            this.log.debug(`Sent command: ${commandString}`);
+            // Debug: console.log(`📤 Sent command: ${commandString}`);
             resolve();
           }
         },
@@ -132,8 +131,14 @@ export class ControllinoSerialService implements SerialControlService {
   }
 
   // Game control commands
-  async startArcades(maxGames: number): Promise<void> {
-    await this.sendCommand(SerialCommand.START_ARCADES, maxGames);
+  async startArcades(
+    maxGames: number,
+    durationMinutes?: number,
+  ): Promise<void> {
+    const params = durationMinutes
+      ? `${maxGames}:${durationMinutes}`
+      : maxGames;
+    await this.sendCommand(SerialCommand.START_ARCADES, params);
   }
 
   async stopArcades(): Promise<void> {
@@ -147,6 +152,10 @@ export class ControllinoSerialService implements SerialControlService {
   // Display commands
   async displayInstructions(instructions: string): Promise<void> {
     await this.sendCommand(SerialCommand.DISPLAY_INSTRUCTIONS, instructions);
+  }
+
+  async sendTeamData(teamData: any): Promise<void> {
+    await this.sendCommand(SerialCommand.TEAM_DATA, JSON.stringify(teamData));
   }
 
   async showWin(): Promise<void> {

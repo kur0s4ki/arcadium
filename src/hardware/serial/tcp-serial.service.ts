@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Observable, Subject } from 'rxjs';
 import * as net from 'net';
@@ -15,22 +15,25 @@ import {
  */
 @Injectable()
 export class TcpSerialService implements SerialControlService {
-  private readonly log = new Logger(TcpSerialService.name);
   private client: net.Socket | null = null;
   private roomTimerExpired$ = new Subject<void>();
   private allGamesComplete$ = new Subject<void>();
   private scoresReceived$ = new Subject<GameScores>();
   private reconnectInterval: NodeJS.Timeout | null = null;
+  private sessionActive = false;
 
   constructor(private cfg: ConfigService) {
     this.initializeTcpConnection();
   }
 
   private initializeTcpConnection() {
-    const host = this.cfg.get<string>('global.hardware.simulator.host', 'localhost');
+    const host = this.cfg.get<string>(
+      'global.hardware.simulator.host',
+      'localhost',
+    );
     const port = this.cfg.get<number>('global.hardware.simulator.port', 9999);
 
-    this.log.log(`🔌 Connecting to arcade simulator at ${host}:${port}`);
+    console.log(`🔌 Connecting to arcade simulator at ${host}:${port}`);
     this.connectToSimulator(host, port);
   }
 
@@ -38,7 +41,7 @@ export class TcpSerialService implements SerialControlService {
     this.client = new net.Socket();
 
     this.client.connect(port, host, () => {
-      this.log.log('✅ Connected to arcade hardware simulator');
+      console.log('✅ Connected to arcade hardware simulator');
       if (this.reconnectInterval) {
         clearInterval(this.reconnectInterval);
         this.reconnectInterval = null;
@@ -50,12 +53,12 @@ export class TcpSerialService implements SerialControlService {
     });
 
     this.client.on('error', (error: Error) => {
-      this.log.error(`❌ TCP connection error: ${error.message}`);
+      // TCP connection error - will retry
       this.scheduleReconnect(host, port);
     });
 
     this.client.on('close', () => {
-      this.log.warn('📡 Connection to simulator closed');
+      // Connection to simulator closed - will retry
       this.scheduleReconnect(host, port);
     });
   }
@@ -63,31 +66,45 @@ export class TcpSerialService implements SerialControlService {
   private scheduleReconnect(host: string, port: number) {
     if (this.reconnectInterval) return;
 
-    this.log.log('🔄 Scheduling reconnection in 5 seconds...');
+    console.log('🔄 Scheduling reconnection in 5 seconds...');
     this.reconnectInterval = setInterval(() => {
-      this.log.log('🔄 Attempting to reconnect to simulator...');
+      console.log('🔄 Attempting to reconnect to simulator...');
       this.connectToSimulator(host, port);
     }, 5000);
   }
 
   private handleSimulatorData(data: string) {
     const trimmedData = data.trim();
-    this.log.debug(`📨 Received from simulator: ${trimmedData}`);
+    console.log(`📨 Received from simulator: ${trimmedData}`);
 
     try {
       // Handle different types of incoming data from simulator
       if (trimmedData === SerialEvent.ROOM_TIMER_EXPIRED) {
-        this.log.log('🕐 Room timer expired event received from simulator');
-        this.roomTimerExpired$.next();
+        if (this.sessionActive) {
+          console.log('🕐 Room timer expired event received from simulator');
+          this.roomTimerExpired$.next();
+        } else {
+          console.log('⚠️ Ignoring ROOM_TIMER_EXPIRED - no active session');
+        }
       } else if (trimmedData === SerialEvent.ALL_GAMES_COMPLETE) {
-        this.log.log('🎮 All games complete event received from simulator');
-        this.allGamesComplete$.next();
+        if (this.sessionActive) {
+          console.log('🎮 All games complete event received from simulator');
+          this.allGamesComplete$.next();
+        } else {
+          console.log('⚠️ Ignoring ALL_GAMES_COMPLETE - no active session');
+        }
       } else if (trimmedData.startsWith(SerialEvent.SCORES_RECEIVED)) {
+        // Always process scores when received, regardless of session state
+        // This prevents race conditions where session is marked inactive
+        // before scores are fully processed
+        console.log('🎯 Processing scores data...');
         this.handleScoresData(trimmedData);
+      } else {
+        console.log(`📡 Unhandled simulator data: ${trimmedData}`);
       }
     } catch (error) {
-      this.log.error(
-        `Error parsing simulator data: ${
+      console.error(
+        `❌ Error parsing simulator data: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -96,15 +113,17 @@ export class TcpSerialService implements SerialControlService {
 
   private handleScoresData(data: string) {
     try {
-      // Expected format: "SCORES_RECEIVED:{ game1: 100, game2: 200, game3: 0, game4: 150 }"
+      // Expected format: "SCORES_RECEIVED:{ player1: 100, player2: 200, player3: 0, player4: 150 }"
       const jsonPart = data.substring(data.indexOf(':') + 1);
       const scores: GameScores = JSON.parse(jsonPart);
 
-      this.log.log(`📊 Scores received from simulator: ${JSON.stringify(scores)}`);
+      console.log(
+        `📊 Player scores received from simulator: ${JSON.stringify(scores)}`,
+      );
       this.scoresReceived$.next(scores);
     } catch (error) {
-      this.log.error(
-        `Error parsing scores data: ${
+      console.error(
+        `❌ Error parsing scores data: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -118,7 +137,7 @@ export class TcpSerialService implements SerialControlService {
     return new Promise((resolve, reject) => {
       if (!this.client || this.client.destroyed) {
         const error = new Error('No connection to simulator');
-        this.log.error(`Failed to send command ${command}: ${error.message}`);
+        console.error(`❌ Failed to send command ${command}: ${error.message}`);
         reject(error);
         return;
       }
@@ -127,12 +146,12 @@ export class TcpSerialService implements SerialControlService {
 
       this.client.write(`${commandString}\n`, (error) => {
         if (error) {
-          this.log.error(
-            `Failed to send command ${commandString}: ${error.message}`,
+          console.error(
+            `❌ Failed to send command ${commandString}: ${error.message}`,
           );
           reject(error);
         } else {
-          this.log.debug(`📤 Sent to simulator: ${commandString}`);
+          // Debug: console.log(`📤 Sent to simulator: ${commandString}`);
           resolve();
         }
       });
@@ -157,8 +176,9 @@ export class TcpSerialService implements SerialControlService {
   }
 
   // Game control commands
-  async startArcades(maxGames: number): Promise<void> {
-    await this.sendCommand(SerialCommand.START_ARCADES, maxGames);
+  async startArcades(durationMinutes: number): Promise<void> {
+    this.sessionActive = true;
+    await this.sendCommand(SerialCommand.START_ARCADES, durationMinutes);
   }
 
   async stopArcades(): Promise<void> {
@@ -166,12 +186,17 @@ export class TcpSerialService implements SerialControlService {
   }
 
   async stopTimers(): Promise<void> {
+    this.sessionActive = false;
     await this.sendCommand(SerialCommand.STOP_TIMERS);
   }
 
   // Display commands
   async displayInstructions(instructions: string): Promise<void> {
     await this.sendCommand(SerialCommand.DISPLAY_INSTRUCTIONS, instructions);
+  }
+
+  async sendTeamData(teamData: any): Promise<void> {
+    await this.sendCommand(SerialCommand.TEAM_DATA, JSON.stringify(teamData));
   }
 
   async showWin(): Promise<void> {

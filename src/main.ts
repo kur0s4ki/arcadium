@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log'],
+    logger: ['log'], // Keep only essential startup logs
   });
   const cfg = app.get(ConfigService);
   await app.listen(cfg.get<number>('global.port', 3000));

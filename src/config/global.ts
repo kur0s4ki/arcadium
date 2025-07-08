@@ -25,9 +25,6 @@ export default registerAs('global', () => {
       roomDurationMinutes: process.env.ROOM_DURATION_MINUTES
         ? parseInt(process.env.ROOM_DURATION_MINUTES, 10)
         : cfg.gameRules.roomDurationMinutes,
-      maxGamesPerSession: process.env.MAX_GAMES_PER_SESSION
-        ? parseInt(process.env.MAX_GAMES_PER_SESSION, 10)
-        : cfg.gameRules.maxGamesPerSession,
       individualGameDurationMinutes:
         cfg.gameRules.individualGameDurationMinutes,
       jackpotThreshold: process.env.JACKPOT_THRESHOLD

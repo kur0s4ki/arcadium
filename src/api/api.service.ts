@@ -24,7 +24,7 @@ export class ApiService {
     gameId: number,
   ): Promise<TeamGameManagerResponse> {
     const url = `${this.baseUrl()}/team-authorization`;
-    this.log.log(
+    console.log(
       `[TEAM-AUTH] Requesting authorization for badge ${badgeId} on game ${gameId}`,
     );
 
@@ -35,7 +35,7 @@ export class ApiService {
       }),
     );
 
-    this.log.log(
+    console.log(
       `[TEAM-AUTH] Response code: ${data.code}, message: ${data.message}`,
     );
     return data;
@@ -46,7 +46,7 @@ export class ApiService {
     scoreRequest: TeamScoreRequest,
   ): Promise<TeamGameManagerResponse> {
     const url = `${this.baseUrl()}/team-create-score`;
-    this.log.log(
+    console.log(
       `[TEAM-SCORE] Submitting scores for game ${scoreRequest.gameId} with ${scoreRequest.players.length} players`,
     );
 
@@ -59,7 +59,7 @@ export class ApiService {
       }),
     );
 
-    this.log.log(
+    console.log(
       `[TEAM-SCORE] Response code: ${data.code}, message: ${data.message}`,
     );
     return data;

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import {
   NFC_READER,
   SENSOR_BUS,
@@ -16,7 +16,7 @@ import {
   GameScores,
 } from '../hardware/interfaces/serial-control.interface';
 import { ConfigService } from '@nestjs/config';
-import { firstValueFrom, Subscription, Subject, Observable, merge } from 'rxjs';
+import { Subscription, Subject, Observable, merge } from 'rxjs';
 import { ApiService } from '../api/api.service';
 import {
   TeamGameManagerResponse,
@@ -34,15 +34,31 @@ interface GameResult {
   jackpotThreshold: number;
 }
 
+enum GameSessionState {
+  WAITING_FOR_BADGE = 'WAITING_FOR_BADGE',
+  AUTHORIZING = 'AUTHORIZING',
+  SETTING_UP_ROOM = 'SETTING_UP_ROOM',
+  ARCADE_SESSION_ACTIVE = 'ARCADE_SESSION_ACTIVE',
+  WAITING_FOR_SCORES = 'WAITING_FOR_SCORES',
+  PROCESSING_RESULTS = 'PROCESSING_RESULTS',
+  SHOWING_EFFECTS = 'SHOWING_EFFECTS',
+  CLEANING_UP = 'CLEANING_UP',
+  ERROR_STATE = 'ERROR_STATE',
+}
+
 @Injectable()
 export class TeamArcadeService implements OnModuleInit {
-  private readonly log = new Logger(TeamArcadeService.name);
   private currentTeam: TeamGameManagerResponse | null = null;
   private gameScores: Map<number, number> = new Map(); // playerId -> score
   private sessionSubscriptions: Subscription[] = [];
-  private sessionActive = false;
+  private currentState = GameSessionState.WAITING_FOR_BADGE;
+  private gamesCompleted = false;
   private manualBadgeSubject = new Subject<string>();
-  private rl?: readline.Interface;
+  private stateTransitions = new Subject<{
+    from: GameSessionState;
+    to: GameSessionState;
+    data?: any;
+  }>();
 
   constructor(
     @Inject(NFC_READER) private nfc: NfcReaderService,
@@ -52,68 +68,70 @@ export class TeamArcadeService implements OnModuleInit {
     private cfg: ConfigService,
     private api: ApiService,
   ) {
-    console.log('🔧 TeamArcadeService constructor called');
     this.setupKeyboardListener();
   }
 
   async onModuleInit() {
-    this.log.log('🎮 Team Arcade Middleware starting...');
-    this.startMainLoop();
+    console.log('🎮 Team Arcade Middleware starting...');
+    this.initializeStateMachine();
+    this.transitionTo(GameSessionState.WAITING_FOR_BADGE);
   }
 
-  private async startMainLoop() {
-    while (true) {
-      try {
-        // Phase 1: Badge Scanning
-        const badgeId = await this.waitForBadgeScan();
+  private initializeStateMachine() {
+    // Set up state transition handlers
+    this.stateTransitions.subscribe(({ from, to, data }) => {
+      console.log(`🔄 State transition: ${from} → ${to}`);
+      this.handleStateTransition(to, data);
+    });
 
-        // Phase 2: Team Authorization
-        const authResult = await this.performTeamAuthorization(badgeId);
-        if (!authResult.success) {
-          await this.handleAuthorizationFailure();
-          continue;
-        }
+    // Set up badge scan listener
+    this.setupBadgeScanListener();
+  }
 
-        // Phase 3: Room Access Control
-        await this.setupRoomAccess();
+  private transitionTo(newState: GameSessionState, data?: any) {
+    const oldState = this.currentState;
+    this.currentState = newState;
+    this.stateTransitions.next({ from: oldState, to: newState, data });
+  }
 
-        // Phase 4: Arcade Game Session Management
-        await this.startArcadeSession();
-
-        // Phase 5: Score Collection
-        const scores = await this.waitForScores();
-
-        // Phase 6: Result Evaluation
-        const gameResult = this.evaluateGameResult(scores);
-
-        // Phase 7: Backend Score Submission
-        await this.submitTeamScores(gameResult);
-
-        // Phase 8: End Game Effects
-        await this.showEndGameEffects(gameResult);
-
-        // Phase 9: Session Cleanup
-        await this.cleanupSession();
-      } catch (error) {
-        this.log.error(
-          `Error in main loop: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-        await this.cleanupSession();
-        await this.delay(5000); // Wait 5 seconds before retrying
+  private async handleStateTransition(state: GameSessionState, data?: any) {
+    try {
+      switch (state) {
+        case GameSessionState.WAITING_FOR_BADGE:
+          await this.handleWaitingForBadge();
+          break;
+        case GameSessionState.AUTHORIZING:
+          await this.handleAuthorizing(data.badgeId);
+          break;
+        case GameSessionState.SETTING_UP_ROOM:
+          await this.handleSettingUpRoom();
+          break;
+        case GameSessionState.ARCADE_SESSION_ACTIVE:
+          await this.handleArcadeSessionActive();
+          break;
+        case GameSessionState.WAITING_FOR_SCORES:
+          await this.handleWaitingForScores();
+          break;
+        case GameSessionState.PROCESSING_RESULTS:
+          await this.handleProcessingResults(data.scores);
+          break;
+        case GameSessionState.SHOWING_EFFECTS:
+          await this.handleShowingEffects(data.gameResult);
+          break;
+        case GameSessionState.CLEANING_UP:
+          await this.handleCleaningUp();
+          break;
+        case GameSessionState.ERROR_STATE:
+          await this.handleErrorState(data.error);
+          break;
       }
+    } catch (error) {
+      console.error(`❌ Error in state ${state}:`, error);
+      this.transitionTo(GameSessionState.ERROR_STATE, { error });
     }
   }
 
-  // Phase 1: Badge Scanning
-  private async waitForBadgeScan(): Promise<string> {
-    this.log.log('🏷️ Phase 1: Waiting for team badge scan...');
-    this.log.log(
-      '💡 Development tip: Press "B" + Enter to manually enter a badge ID',
-    );
-    this.led.setColor(LedColor.GREEN);
-
+  private setupBadgeScanListener() {
     // Create a combined observable that listens to both NFC reader and manual input
     const combinedSource = new Observable<string>((subscriber) => {
       // Subscribe to real NFC reader
@@ -132,51 +150,149 @@ export class TeamArcadeService implements OnModuleInit {
       };
     });
 
-    const badgeId = await firstValueFrom(combinedSource);
-    this.log.log(`Badge scanned: ${badgeId}`);
-    this.led.setColor(LedColor.YELLOW);
+    // Listen for badge scans and trigger authorization
+    combinedSource.subscribe((badgeId) => {
+      if (this.currentState === GameSessionState.WAITING_FOR_BADGE) {
+        console.log(`✅ Badge detected: ${badgeId}`);
+        this.transitionTo(GameSessionState.AUTHORIZING, { badgeId });
+      }
+    });
+  }
 
-    return badgeId;
+  // State Handlers
+  private async handleWaitingForBadge() {
+    console.log('🏷️ Waiting for team badge scan...');
+    this.led.setColor(LedColor.GREEN);
+    // Badge scan listener is already set up, just wait
+  }
+
+  private async handleAuthorizing(badgeId: string) {
+    this.led.setColor(LedColor.YELLOW);
+    console.log('🔐 Checking team authorization...');
+
+    const authResult = await this.performTeamAuthorization(badgeId);
+    if (authResult.success) {
+      this.transitionTo(GameSessionState.SETTING_UP_ROOM);
+    } else {
+      await this.handleAuthorizationFailure();
+      this.transitionTo(GameSessionState.WAITING_FOR_BADGE);
+    }
+  }
+
+  private async handleSettingUpRoom() {
+    await this.setupRoomAccess();
+    await this.sendTeamDataToSimulator();
+    this.transitionTo(GameSessionState.ARCADE_SESSION_ACTIVE);
+  }
+
+  private async handleArcadeSessionActive() {
+    await this.startArcadeSession();
+    this.transitionTo(GameSessionState.WAITING_FOR_SCORES);
+  }
+
+  private async handleWaitingForScores() {
+    // Set up score listening and timer expiration handling
+    this.setupScoreListening();
+  }
+
+  private setupScoreListening() {
+    // Listen for scores
+    const scoresSub = this.serial
+      .onScoresReceived()
+      .subscribe(async (scores) => {
+        if (this.currentState === GameSessionState.WAITING_FOR_SCORES) {
+          console.log(
+            `📊 Player scores received from simulator: ${JSON.stringify(
+              scores,
+            )}`,
+          );
+
+          // Stop arcades and timers when scores are received
+          console.log('🛑 Stopping arcades and timers - game finished');
+          try {
+            await this.serial.stopArcades();
+            await this.serial.stopTimers();
+          } catch (error) {
+            console.error(
+              '❌ Error stopping arcades after score submission:',
+              error,
+            );
+          }
+
+          this.transitionTo(GameSessionState.PROCESSING_RESULTS, { scores });
+        }
+      });
+
+    // Listen for timer expiration
+    const timerSub = this.serial.onRoomTimerExpired().subscribe(() => {
+      if (this.currentState === GameSessionState.WAITING_FOR_SCORES) {
+        console.log('⏰ Room timer expired - ending session without scores');
+        this.transitionTo(GameSessionState.CLEANING_UP);
+      }
+    });
+
+    this.sessionSubscriptions.push(scoresSub, timerSub);
+  }
+
+  private async handleProcessingResults(scores: GameScores) {
+    const gameResult = this.evaluateGameResult(scores);
+    await this.submitTeamScores(gameResult);
+    this.transitionTo(GameSessionState.SHOWING_EFFECTS, { gameResult });
+  }
+
+  private async handleShowingEffects(gameResult: GameResult) {
+    await this.showEndGameEffects(gameResult);
+    this.transitionTo(GameSessionState.CLEANING_UP);
+  }
+
+  private async handleCleaningUp() {
+    await this.cleanupSession();
+    this.transitionTo(GameSessionState.WAITING_FOR_BADGE);
+  }
+
+  private async handleErrorState(error: any) {
+    console.error('❌ Handling error state:', error);
+    await this.cleanupSession();
+    await this.delay(5000); // Wait before retrying
+    this.transitionTo(GameSessionState.WAITING_FOR_BADGE);
   }
 
   // Phase 2: Team Authorization
   private async performTeamAuthorization(
     badgeId: string,
   ): Promise<{ success: boolean; response?: TeamGameManagerResponse }> {
-    this.log.log('🔐 Phase 2: Performing team authorization...');
+    console.log('🔐 Checking team authorization...');
     const gameId = this.cfg.get<number>('global.gameId') ?? 1;
 
     try {
       const response = await this.api.teamAuthorization(badgeId, gameId);
+      console.log('📋 API Response:', response);
 
       if (response.code === 200 && response.team && response.players) {
         this.currentTeam = response;
         this.gameScores.clear();
+        this.gamesCompleted = false;
 
         // Initialize scores for all players
         response.players.forEach((player) => {
           this.gameScores.set(player.id, 0);
         });
 
-        this.log.log(
+        console.log(
           `✅ Team authorized: ${response.team.name} (${response.players.length} players)`,
-        );
-        this.log.log(
-          `📋 Game rules: ${
-            response.team.gamePlay.duration
-          }s duration, ${this.cfg.get(
-            'global.gameRules.maxGamesPerSession',
-          )} max games`,
         );
 
         return { success: true, response };
       } else {
-        this.log.warn(`❌ Authorization failed: ${response.message}`);
+        console.log(`❌ Authorization failed: ${response.message}`);
         return { success: false, response };
       }
     } catch (error) {
-      this.log.error(
-        `API Error: ${error instanceof Error ? error.message : String(error)}`,
+      console.log('📋 API Error Details:', error);
+      console.error(
+        `❌ API Error: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       return { success: false };
     }
@@ -184,7 +300,7 @@ export class TeamArcadeService implements OnModuleInit {
 
   // Handle authorization failure
   private async handleAuthorizationFailure(): Promise<void> {
-    this.log.log('🚫 Phase 2 Failed: Handling authorization failure...');
+    console.log('🚫 Team authorization failed - access denied');
     this.led.setColor(LedColor.RED);
     await this.serial.sendAccessDenied();
     await this.delay(3000);
@@ -192,7 +308,7 @@ export class TeamArcadeService implements OnModuleInit {
 
   // Phase 3: Room Access Control
   private async setupRoomAccess(): Promise<void> {
-    this.log.log('🚪 Phase 3: Setting up room access...');
+    console.log('🚪 Opening room access...');
     this.led.setColor(LedColor.BLUE);
 
     try {
@@ -209,10 +325,40 @@ export class TeamArcadeService implements OnModuleInit {
       );
       await this.serial.displayInstructions(instructions);
 
-      this.log.log('✅ Room access granted and instructions displayed');
+      console.log('✅ Room access granted');
     } catch (error) {
-      this.log.error(
-        `Room setup error: ${
+      console.error(
+        `❌ Room setup error: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      throw error;
+    }
+  }
+
+  // Phase 3.5: Send Team Data to Simulator
+  private async sendTeamDataToSimulator(): Promise<void> {
+    console.log('📤 Sending team data to simulator...');
+
+    if (!this.currentTeam?.players) return;
+
+    const teamData = {
+      players: this.currentTeam.players.map((player, index) => ({
+        badgeId: player.badgeId,
+        position: index + 1, // Player 1, 2, 3, 4
+      })),
+    };
+
+    try {
+      await this.serial.sendTeamData(teamData);
+      console.log(
+        `✅ Badge IDs sent to simulator: ${this.currentTeam.players
+          .map((p) => p.badgeId)
+          .join(', ')}`,
+      );
+    } catch (error) {
+      console.error(
+        `❌ Failed to send team data: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -222,25 +368,26 @@ export class TeamArcadeService implements OnModuleInit {
 
   // Phase 4: Arcade Game Session Management
   private async startArcadeSession(): Promise<void> {
-    this.log.log('🎮 Phase 4: Starting arcade session...');
-    this.sessionActive = true;
+    console.log('🎮 Starting arcade session...');
 
-    const maxGames = this.cfg.get<number>(
-      'global.gameRules.maxGamesPerSession',
-      4,
+    const roomDurationMinutes = this.cfg.get<number>(
+      'global.gameRules.roomDurationMinutes',
+      5,
     );
 
     try {
-      // Start arcades with max games parameter
-      await this.serial.startArcades(maxGames);
+      // Start arcades with timer duration only
+      await this.serial.startArcades(roomDurationMinutes);
 
       // Subscribe to session end events
       this.setupSessionMonitoring();
 
-      this.log.log(`✅ Arcade session started with max ${maxGames} games`);
+      console.log(
+        `✅ Arcade session started for ${roomDurationMinutes} minutes`,
+      );
     } catch (error) {
-      this.log.error(
-        `Session start error: ${
+      console.error(
+        `❌ Session start error: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -252,13 +399,16 @@ export class TeamArcadeService implements OnModuleInit {
   private setupSessionMonitoring(): void {
     // Monitor room timer expiration
     const roomTimerSub = this.serial.onRoomTimerExpired().subscribe(() => {
-      this.log.log('🕐 Room timer expired');
+      console.log('🕐 Room timer expired');
       this.handleSessionEnd('ROOM_TIMER_EXPIRED');
     });
 
     // Monitor all games completion
     const gamesCompleteSub = this.serial.onAllGamesComplete().subscribe(() => {
-      this.log.log('🎮 All games completed');
+      console.log('🎮 All games completed');
+      this.gamesCompleted = true;
+      // Immediately unsubscribe to prevent duplicate events
+      gamesCompleteSub.unsubscribe();
       this.handleSessionEnd('ALL_GAMES_COMPLETE');
     });
 
@@ -267,60 +417,50 @@ export class TeamArcadeService implements OnModuleInit {
 
   // Handle session end conditions
   private async handleSessionEnd(reason: string): Promise<void> {
-    if (!this.sessionActive) return;
+    if (!this.isSessionActive()) return;
 
-    this.log.log(`🛑 Session ending due to: ${reason}`);
-    this.sessionActive = false;
+    console.log(`🛑 Session ending due to: ${reason}`);
 
     try {
-      await this.serial.stopArcades();
-      await this.serial.stopTimers();
+      // For ALL_GAMES_COMPLETE, just mark games as completed
+      // Arcades/timers will be stopped when scores are received
+      if (reason === 'ALL_GAMES_COMPLETE') {
+        console.log('🎮 Games completed - waiting for score submission');
+        return;
+      }
+
+      // For timer expiration, stop everything and go to cleanup
+      if (reason === 'ROOM_TIMER_EXPIRED') {
+        await this.serial.stopArcades();
+        await this.serial.stopTimers();
+        this.transitionTo(GameSessionState.CLEANING_UP);
+      }
     } catch (error) {
-      this.log.error(
-        `Error stopping session: ${
+      console.error(
+        `❌ Error stopping session: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
     }
   }
 
-  // Phase 5: Score Collection
-  private async waitForScores(): Promise<GameScores> {
-    this.log.log('📊 Phase 5: Waiting for final scores...');
-
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Timeout waiting for scores'));
-      }, 30000); // 30 second timeout
-
-      const scoresSub = this.serial.onScoresReceived().subscribe((scores) => {
-        clearTimeout(timeout);
-        scoresSub.unsubscribe();
-        this.log.log(`📊 Scores received: ${JSON.stringify(scores)}`);
-        resolve(scores);
-      });
-
-      this.sessionSubscriptions.push(scoresSub);
-    });
-  }
-
   // Phase 6: Result Evaluation Logic
   private evaluateGameResult(scores: GameScores): GameResult {
-    this.log.log('🎯 Phase 6: Evaluating game results...');
+    console.log('🎯 Evaluating game results...');
 
     const totalScore =
-      scores.game1 + scores.game2 + scores.game3 + scores.game4;
+      scores.player1 + scores.player2 + scores.player3 + scores.player4;
     const jackpotThreshold = this.cfg.get<number>(
       'global.gameRules.jackpotThreshold',
       1000,
     );
 
-    // Determine if any individual game hit jackpot
+    // Determine if any individual player hit jackpot
     const hasJackpot =
-      scores.game1 >= jackpotThreshold ||
-      scores.game2 >= jackpotThreshold ||
-      scores.game3 >= jackpotThreshold ||
-      scores.game4 >= jackpotThreshold;
+      scores.player1 >= jackpotThreshold ||
+      scores.player2 >= jackpotThreshold ||
+      scores.player3 >= jackpotThreshold ||
+      scores.player4 >= jackpotThreshold;
 
     // Determine win/loss
     const teamWon = totalScore > 0;
@@ -333,7 +473,7 @@ export class TeamArcadeService implements OnModuleInit {
       jackpotThreshold,
     };
 
-    this.log.log(
+    console.log(
       `🎯 Game result: ${
         teamWon ? 'WON' : 'LOST'
       }, Total: ${totalScore}, Jackpot: ${hasJackpot ? 'YES' : 'NO'}`,
@@ -344,20 +484,31 @@ export class TeamArcadeService implements OnModuleInit {
 
   // Phase 7: Backend Score Submission
   private async submitTeamScores(gameResult: GameResult): Promise<void> {
-    this.log.log('📤 Phase 7: Submitting team scores...');
+    console.log('📤 Submitting team scores...');
 
     if (!this.currentTeam?.players) return;
 
-    // Map arcade game scores to players (distribute evenly for now)
+    // Map individual player scores from arcade machines to players
     const playerScores: PlayerScoreData[] = this.currentTeam.players.map(
       (player, index) => {
-        const gameScoreKeys = Object.keys(
-          gameResult.individualScores,
-        ) as (keyof GameScores)[];
-        const playerScore =
-          index < gameScoreKeys.length
-            ? gameResult.individualScores[gameScoreKeys[index]]
-            : 0;
+        // Map each player to their corresponding arcade machine score
+        let playerScore = 0;
+        switch (index) {
+          case 0:
+            playerScore = gameResult.individualScores.player1;
+            break;
+          case 1:
+            playerScore = gameResult.individualScores.player2;
+            break;
+          case 2:
+            playerScore = gameResult.individualScores.player3;
+            break;
+          case 3:
+            playerScore = gameResult.individualScores.player4;
+            break;
+          default:
+            playerScore = 0; // Extra players beyond 4 get 0 score
+        }
 
         return {
           playerId: player.id,
@@ -374,39 +525,45 @@ export class TeamArcadeService implements OnModuleInit {
     };
 
     try {
+      console.log(
+        '📤 Score request payload:',
+        JSON.stringify(scoreRequest, null, 2),
+      );
       const response = await this.api.teamCreateScore(scoreRequest);
-
       if (response.code === 200) {
-        this.log.log('✅ Scores submitted successfully');
+        console.log('✅ Scores submitted successfully');
       } else {
-        this.log.warn(`❌ Score submission failed: ${response.message}`);
+        console.log(`❌ Score submission failed: ${response.message}`);
       }
     } catch (error) {
-      this.log.error(
-        `Score submission error: ${
+      console.error(
+        `❌ Score submission error: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      if (error instanceof Error && 'response' in error) {
+        console.error('📥 Error response:', error.response);
+      }
     }
   }
 
   // Phase 8: End Game Effects
   private async showEndGameEffects(gameResult: GameResult): Promise<void> {
-    this.log.log('🎭 Phase 8: Showing end game effects...');
+    console.log('🎭 Showing end game effects...');
 
     try {
       if (gameResult.hasJackpot) {
-        this.log.log('💰 JACKPOT! Playing jackpot animation...');
+        console.log('💰 JACKPOT! Playing jackpot animation...');
         this.led.setColor(LedColor.YELLOW); // Gold color for jackpot
         await this.serial.showJackpotAnimation();
         await this.delay(2000);
         await this.serial.celebrate();
       } else if (gameResult.teamWon) {
-        this.log.log('🏆 Team won! Playing win animation...');
+        console.log('🏆 Team won! Playing win animation...');
         this.led.setColor(LedColor.BLUE);
         await this.serial.showWin();
       } else {
-        this.log.log('😞 Team lost. Playing loss animation...');
+        console.log('😞 Team lost. Playing loss animation...');
         this.led.setColor(LedColor.RED);
         await this.serial.showLoss();
       }
@@ -416,8 +573,8 @@ export class TeamArcadeService implements OnModuleInit {
       // Turn off lighting
       await this.serial.turnOffLighting();
     } catch (error) {
-      this.log.error(
-        `End game effects error: ${
+      console.error(
+        `❌ End game effects error: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -426,7 +583,7 @@ export class TeamArcadeService implements OnModuleInit {
 
   // Phase 9: Session Cleanup
   private async cleanupSession(): Promise<void> {
-    this.log.log('🧹 Phase 9: Cleaning up session...');
+    console.log('🧹 Cleaning up session...');
 
     try {
       // Unsubscribe from all session events
@@ -434,7 +591,6 @@ export class TeamArcadeService implements OnModuleInit {
       this.sessionSubscriptions = [];
 
       // Reset session state
-      this.sessionActive = false;
       this.currentTeam = null;
       this.gameScores.clear();
 
@@ -444,10 +600,10 @@ export class TeamArcadeService implements OnModuleInit {
       // Return LED to green (waiting state)
       this.led.setColor(LedColor.GREEN);
 
-      this.log.log('✅ Session cleanup completed');
+      console.log('✅ Session cleanup completed');
     } catch (error) {
-      this.log.error(
-        `Cleanup error: ${
+      console.error(
+        `❌ Cleanup error: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -463,27 +619,42 @@ export class TeamArcadeService implements OnModuleInit {
     return this.currentTeam;
   }
 
+  // Helper methods for state management
+  private isSessionActive(): boolean {
+    return (
+      this.currentState !== GameSessionState.WAITING_FOR_BADGE &&
+      this.currentState !== GameSessionState.ERROR_STATE &&
+      this.currentState !== GameSessionState.CLEANING_UP
+    );
+  }
+
   public getSessionActive(): boolean {
-    return this.sessionActive;
+    return this.isSessionActive();
+  }
+
+  public getCurrentState(): GameSessionState {
+    return this.currentState;
   }
 
   public async forceGameEnd(): Promise<void> {
-    this.log.log('🛑 Forcing game end...');
-    if (this.sessionActive) {
-      await this.handleSessionEnd('MANUAL_OVERRIDE');
+    console.log('🛑 Forcing game end...');
+    if (this.isSessionActive()) {
+      this.transitionTo(GameSessionState.ERROR_STATE, {
+        error: new Error('Manual override'),
+      });
     }
   }
 
   public async emergencyStop(): Promise<void> {
-    this.log.log('🚨 Emergency stop activated...');
+    console.log('🚨 Emergency stop activated...');
     try {
       await this.serial.stopArcades();
       await this.serial.stopTimers();
       await this.serial.turnOffLighting();
       await this.cleanupSession();
     } catch (error) {
-      this.log.error(
-        `Emergency stop error: ${
+      console.error(
+        `❌ Emergency stop error: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -498,55 +669,31 @@ export class TeamArcadeService implements OnModuleInit {
       return;
     }
 
-    this.rl = readline.createInterface({
+    // Create persistent readline interface
+    const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
     });
 
-    // Set up raw mode to capture single keystrokes
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(true);
-    }
+    // Listen for line input (when user presses Enter)
+    rl.on('line', (input) => {
+      const inputStr = input.toString().trim().toUpperCase();
 
-    process.stdin.on('data', (key) => {
-      const keyStr = key.toString().toLowerCase();
-
-      if (keyStr === 'b') {
-        this.promptForBadgeId();
-      }
-      // Handle Ctrl+C gracefully
-      else if (key[0] === 3) {
-        process.exit(0);
+      if (inputStr === 'B') {
+        this.promptForBadgeId(rl);
       }
     });
 
-    this.log.log(
-      '⌨️  Keyboard listener active - Press "B" to simulate badge scan',
-    );
+    console.log('⌨️  Type "B" + Enter to simulate badge scan');
   }
 
-  private promptForBadgeId(): void {
-    if (!this.rl) {
-      this.log.warn('❌ Readline interface not available');
-      return;
-    }
-
-    // Temporarily disable raw mode for input
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(false);
-    }
-
-    this.rl.question('\n🏷️  Enter badge ID: ', (badgeId) => {
+  private promptForBadgeId(rl: readline.Interface): void {
+    rl.question('🏷️  Enter badge ID: ', (badgeId) => {
       if (badgeId.trim()) {
-        this.log.log(`📱 Manual badge input: ${badgeId.trim()}`);
+        console.log(`📱 Simulating badge scan: ${badgeId.trim()}`);
         this.manualBadgeSubject.next(badgeId.trim());
       } else {
-        this.log.warn('❌ Empty badge ID, ignoring...');
-      }
-
-      // Re-enable raw mode
-      if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
+        console.log('❌ Empty badge ID ignored');
       }
     });
   }
