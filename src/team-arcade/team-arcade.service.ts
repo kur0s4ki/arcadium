@@ -48,7 +48,9 @@ export class TeamArcadeService implements OnModuleInit {
     @Inject(SERIAL_CONTROL) private serial: SerialControlService,
     private cfg: ConfigService,
     private api: ApiService,
-  ) {}
+  ) {
+    console.log('🔧 TeamArcadeService constructor called');
+  }
 
   async onModuleInit() {
     this.log.log('🎮 Team Arcade Middleware starting...');

@@ -9,16 +9,33 @@ export class PcscLiteReaderService implements NfcReaderService {
   private readonly log = new Logger(PcscLiteReaderService.name);
 
   constructor() {
-    const pcsc = new NFC();
+    this.log.log('🔧 PcscLiteReaderService constructor called');
 
-    pcsc.on('reader', reader => {
-      this.log.log(`reader detected → ${reader.name}`);
-      reader.on('card', card => {
-        this.tag$.next(card.uid);
+    try {
+      const pcsc = new NFC();
+
+      pcsc.on('reader', (reader) => {
+        this.log.log(`reader detected → ${reader.name}`);
+        reader.on('card', (card) => {
+          this.tag$.next(card.uid);
+        });
+        reader.on('error', (err) => this.log.error(err.message));
+        reader.on('end', () => this.log.warn('reader removed'));
       });
-      reader.on('error', err => this.log.error(err.message));
-      reader.on('end', () => this.log.warn('reader removed'));
-    });
+
+      pcsc.on('error', (err) => {
+        this.log.error(`PCSC error: ${err.message}`);
+      });
+
+      this.log.log('✅ PCSC NFC reader initialized');
+    } catch (error) {
+      this.log.error(
+        `❌ Failed to initialize PCSC: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      // Continue without PCSC - for development we can simulate badge scans
+    }
   }
 
   onTag(): Observable<string> {

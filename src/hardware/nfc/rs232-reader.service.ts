@@ -14,7 +14,9 @@ export class Rs232ReaderService implements NfcReaderService, OnModuleInit {
   private receivedData: string = '';
   private lastEmittedData: string | null = null;
 
-  constructor(private cfg: ConfigService) {}
+  constructor(private cfg: ConfigService) {
+    this.log.log('🔧 Rs232ReaderService constructor called');
+  }
 
   async onModuleInit() {
     await this.initSerialPort();

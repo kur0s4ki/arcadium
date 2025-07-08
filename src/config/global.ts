@@ -36,7 +36,18 @@ export default registerAs('global', () => {
       gameInstructions: cfg.gameRules.gameInstructions,
     },
 
-    hardware: cfg.hardware,
+    hardware: {
+      ...cfg.hardware,
+      simulator: {
+        host:
+          process.env.SIMULATOR_HOST ||
+          cfg.hardware?.simulator?.host ||
+          'localhost',
+        port: process.env.SIMULATOR_PORT
+          ? parseInt(process.env.SIMULATOR_PORT, 10)
+          : cfg.hardware?.simulator?.port || 9999,
+      },
+    },
     adminBadges: cfg.adminBadges,
   };
 });

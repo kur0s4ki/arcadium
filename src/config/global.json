@@ -2,12 +2,17 @@
   "port": 3000,
   "gameId": 1,
   "stationId": "ARCADE-01",
-  "mode": "PROD",
+  "mode": "SIM",
   "api": {
     "baseUrl": "https://vmi693601.contaboserver.net:9010/api/game-manager"
   },
   "hardware": {
     "nfcReaderType": "RS232",
+    "serialType": "TCP",
+    "simulator": {
+      "host": "localhost",
+      "port": 9999
+    },
     "rs232": {
       "baudRate": 9600,
       "vendorId": "1a86",

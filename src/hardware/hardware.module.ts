@@ -11,6 +11,7 @@ import { Rs232ReaderService } from './nfc/rs232-reader.service';
 import { ControllinoSensorService } from './sensors/controllino-sensor.service';
 import { ControllinoLedService } from './leds/controllino-led.service';
 import { ControllinoSerialService } from './serial/controllino-serial.service';
+import { TcpSerialService } from './serial/tcp-serial.service';
 import { ConsoleDisplayService } from './display/console-display.service';
 import { ConfigService } from '@nestjs/config';
 
@@ -34,7 +35,30 @@ import { ConfigService } from '@nestjs/config';
     },
     { provide: SENSOR_BUS, useClass: ControllinoSensorService },
     { provide: LED_CONTROL, useClass: ControllinoLedService },
-    { provide: SERIAL_CONTROL, useClass: ControllinoSerialService },
+    {
+      provide: SERIAL_CONTROL,
+      useFactory: (cfg: ConfigService) => {
+        // Choose serial service based on mode and config
+        const mode = cfg.get<string>('global.mode', 'PROD');
+        const serialType = cfg.get<string>(
+          'global.hardware.serialType',
+          'REAL',
+        );
+
+        console.log(
+          `🔧 Hardware Module - Mode: ${mode}, SerialType: ${serialType}`,
+        );
+
+        if (mode === 'SIM' || serialType === 'TCP') {
+          console.log('🔧 Using TcpSerialService for simulation');
+          return new TcpSerialService(cfg);
+        } else {
+          console.log('🔧 Using ControllinoSerialService for real hardware');
+          return new ControllinoSerialService(cfg);
+        }
+      },
+      inject: [ConfigService],
+    },
     { provide: DISPLAY, useClass: ConsoleDisplayService },
   ],
   exports: [NFC_READER, SENSOR_BUS, LED_CONTROL, SERIAL_CONTROL, DISPLAY],
